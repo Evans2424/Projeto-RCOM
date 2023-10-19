@@ -21,11 +21,13 @@ void alarmHandler(int signal){
     alarmCount++;
 }
 
-int llopen(LinkLayer connectionParameters)
-{
-    LinkLayerState state = START;
-    int fd = open(connectionParameters.serialPort, O_RWDR | O_NOCCTY);
+int llopen(LinkLayer connectionParameters) {
 
+    LinkLayerState state = START;
+    timeout = connectionParameters.timeout;
+    retransmitions = connectionParameters.nRetransmissions;
+
+    int fd = open(connectionParameters.serialPort, O_RWDR | O_NOCCTY);
     if (fd < 0){
         printf("Error connecting to the serial port");
         return -1; 
@@ -39,38 +41,76 @@ int llopen(LinkLayer connectionParameters)
             unsigned char frame[5] = {0x7E, 0x03, 0x03, 0x03 ^ 0x03, 0x7E}; // Construction of SET Supervision command. 
             write(fd, frame, 5);// Send the command to the receiver
 
-            while (state != STOP && alarmActivated == FALSE) { // Cycle to read the UA Command from receiver, it stops when it reaches the STOP state, or the alarm is activated (timeout).
-                            if (read(fd, &byte, 1) > 0) { // Reads one byte at a time
-                                switch (state) {
-                                    case START:
-                                        if (byte == 0x7E) state = FLAG_RCV;
-                                        break;
-                                    case FLAG_RCV:
-                                        if (byte == 0x01) state = A_RCV;
-                                        else if (byte != 0x7E) state = START;
-                                        break;
-                                    case A_RCV:
-                                        if (byte == 0x07) state = C_RCV;
-                                        else if (byte == 0x7E) state = FLAG_RCV;
-                                        else state = START;
-                                        break;
-                                    case C_RCV:
-                                        if (byte == 0x01 ^ 0x07) state = BCC1_OK;
-                                        else if (byte == 0x7E) state = FLAG_RCV;
-                                        else state = START;
-                                        break;
-                                    case BCC1_OK:
-                                        if (byte = 0x7E) state = STOP;
-                                        else state = START;
-                                        break;
-                                    default:
-                                        break;
-                        }
+            while (state != STOP_ && alarmActivated == FALSE) { // Cycle to read the UA Command from receiver, it stops when it reaches the STOP_ state, or the alarm is activated (timeout).
+                if (read(fd, &byte, 1) > 0) { // Reads one byte at a time
+                    switch (state) {
+                        case START:
+                            if (byte == 0x7E) state = FLAG_RCV;
+                            break;
+                        case FLAG_RCV:
+                            if (byte == 0x01) state = A_RCV;
+                            else if (byte != 0x7E) state = START;
+                            break;
+                        case A_RCV:
+                            if (byte == 0x07) state = C_RCV;
+                            else if (byte == 0x7E) state = FLAG_RCV;
+                            else state = START;
+                            break;
+                        case C_RCV:
+                            if (byte == 0x01 ^ 0x07) state = BCC1_OK;
+                            else if (byte == 0x7E) state = FLAG_RCV;
+                            else state = START;
+                            break;
+                        case BCC1_OK:
+                            if (byte = 0x7E) state = STOP_;
+                            else state = START;
+                            break;
+                        default:
+                            break;
+                     }
+                }
+            }
+
+            connectionParameters.nRetransmissions -= 1; // Decrements the number of retransmissions
+        
+        case LlRx:
+
+            while(state != STOP_) {
+                if(read( fd, &byte, 1) > 0) {
+                    switch (state) {
+                        case START:
+                            if (byte == 0x7E) state = FLAG_RCV;
+                            break;
+                        case FLAG_RCV:
+                            if(byte = 0x03) state = A_RCV;
+                            else if (byte != 0x7E) state = START;
+                            break;
+                        case A_RCV:
+                            if(byte == 0x07) state = C_RCV;
+                            else if (byte == 0x7E) state = FLAG_RCV;
+                            else state = START;
+                            break;
+                        case C_RCV:
+                            if(byte == 0x03 ^ 0x03) state = BCC1_OK;
+                            else if (byte == 0x7E) state = FLAG_RCV;
+                            else state = START;
+                            break;
+                        case BCC1_OK:
+                            if(byte == 0x7E) state = STOP_;
+                            else state = START;
+                            break;
+                        default:
+                            break;
                     }
                 }
+            }
+
+            unsigned char frame[5] = {0x7E, 0x01, 0x07, 0x01 ^ 0x07, 0x7E}; 
+            write(fd, frame, 5);
+
         }
-                return 1;
-    }
+    return 1;
+}
 
     
 ////////////////////////////////////////////////
