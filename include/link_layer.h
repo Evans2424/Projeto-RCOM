@@ -4,11 +4,33 @@
 #ifndef _LINK_LAYER_H_
 #define _LINK_LAYER_H_
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <termios.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <signal.h>
+#include <time.h>
+
 typedef enum
 {
     LlTx,
     LlRx,
 } LinkLayerRole;
+
+typedef enum{
+    START,
+    FLAG_RCV,
+    A_RCV,
+    C_RCV,
+    BCC1_OK,
+    STOP
+
+} LinkLayerState;
+
 
 typedef struct
 {
