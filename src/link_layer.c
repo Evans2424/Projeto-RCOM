@@ -103,7 +103,7 @@ int llopen(LinkLayer connectionParameters) {
                             break;
                     }
                 }
-            }
+            }   
 
             unsigned char frame[5] = {0x7E, 0x01, 0x07, 0x01 ^ 0x07, 0x7E}; 
             write(fd, frame, 5);
