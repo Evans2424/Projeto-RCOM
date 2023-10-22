@@ -13,14 +13,16 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     linkLayer.nRetransmissions = nTries;
     linkLayer.timeout = timeout;
 
-    llopen(linkLayer);
+    int fd = llopen(linkLayer);
+    sleep(5);
+    llclose(fd, linkLayer);
 
     switch(linkLayer.role)
     {
         case LlTx:
-            FILE* file = fopen(filename, "r");
-            int filesize = ftell(file);
-            fseek(file, 0L, SEEK_END);
+           // FILE* file = fopen(filename, "r");
+            //int filesize = ftell(file);
+            //fseek(file, 0L, SEEK_END);
            //buildControlPacket(linkLayer, filesize, filename);
 
             break;
