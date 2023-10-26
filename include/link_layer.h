@@ -27,6 +27,8 @@ typedef enum{
     A_RCV,
     C_RCV,
     BCC1_OK,
+    READING,
+    DATA_FOUND,
     STOP
 
 } LinkLayerState;
@@ -56,11 +58,11 @@ int llopen(LinkLayer connectionParameters);
 
 // Send data in buf with size bufSize.
 // Return number of chars written, or "-1" on error.
-int llwrite(const unsigned char *buf, int bufSize);
+int llwrite(int fd, const unsigned char *buf, int bufSize);
 
 // Receive data in packet.
 // Return number of chars read, or "-1" on error.
-int llread(unsigned char *packet);
+int llread(int fd, unsigned char *packet);
 
 // Close previously opened connection.
 // if showStatistics == TRUE, link layer should print statistics in the console on close.
@@ -68,5 +70,11 @@ int llread(unsigned char *packet);
 int llclose(int fd, LinkLayer connectionParameters);
 
 int supervisionWriter(int fd, unsigned char flag, unsigned char a, unsigned char c);
+
+int stuffing(unsigned char* buf, int start, int length, unsigned char* message);
+
+int destuffing(unsigned char* buf, int start, int length, unsigned char* message);
+
+int readResponse(int fd);
 
 #endif // _LINK_LAYER_H_

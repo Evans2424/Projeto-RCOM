@@ -3,9 +3,9 @@
 #include "link_layer.h"
 
 
-int STOP_ = FALSE;
-unsigned char tramaTx = 0;
-unsigned char tramaRx = 1;
+
+unsigned char NTx = 0; //N do transmissor (I0 ou I1)
+unsigned char NRx = 1; // N do recetor (RR0 ou RR1 ou REJ0 ou REJ1)
 int alarmCount = 0;
 int alarmActivated = FALSE;
 int timeout = 0;
@@ -96,7 +96,7 @@ int llopen(LinkLayer connectionParameters) {
                 alarm(connectionParameters.timeout); // Sets the alarm to the timeout value, so that it waits n seconds to try to retrieve the UA commands
                 alarmActivated = FALSE; // Sets the alarmActivated to FALSE so that it enters the while loop below.
             
-                while (state != STOP && alarmActivated == FALSE) { // Cycle to read the UA Command from receiver, it stops when it reaches the STOP_ state, or the alarm is activated (timeout).s
+                while (state != STOP && alarmActivated == FALSE) { // Cycle to read the UA Command from receiver, it stops when it reaches the STOP state, or the alarm is activated (timeout).s
 
                     if (read(fd, &byte, 1) > 0) { // Reads one byte at a time
                         switch (state) {
@@ -118,7 +118,7 @@ int llopen(LinkLayer connectionParameters) {
                                 else state = START;
                                 break;
                             case BCC1_OK:
-                                if (byte == 0x7E) state = STOP_;
+                                if (byte == 0x7E) state = STOP;
                                 else state = START;
                                 break;
                             default:
@@ -129,7 +129,7 @@ int llopen(LinkLayer connectionParameters) {
             }
                  connectionParameters.nRetransmissions -= 1; // Decrements the number of retransmissions
             }
-            if (state != STOP_) return -1; 
+            if (state != STOP) return -1; 
         case LlRx:
 
             while(state != STOP) {
@@ -154,7 +154,7 @@ int llopen(LinkLayer connectionParameters) {
                             else state = START;
                             break;
                         case BCC1_OK:
-                            if(byte == 0x7E) state = STOP_;
+                            if(byte == 0x7E) state = STOP;
                             else state = START;
                             break;
                         default:
@@ -173,7 +173,7 @@ return 1;
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-int llwrite(const unsigned char *buf, int bufSize)
+int llwrite(int fd, const unsigned char *buf, int bufSize)
 {
     int frameSize = bufSize + 6;
     unsigned char frame[frameSize];
@@ -187,20 +187,113 @@ int llwrite(const unsigned char *buf, int bufSize)
     for (int i = 1; i < bufSize; i++) { //XOR between all the data bytes in buf
         bcc2 ^= buf[i];
     }
-    frame[bufSize + 4] = bcc2;
 
-    unsigned char* message[frameSize];
+    unsigned char* message = (unsigned char*) malloc(frameSize * 2 * sizeof(unsigned char));
     frameSize = stuffing(frame, 1, frameSize, message);
-
-    return 0;
+    message[frameSize++] = bcc2;
+    message[frameSize++] = 0x7E;
+    
+    int nTransmission = 0;
+    int rejected = FALSE, accepted = FALSE;
+    while(nTransmission < retransmitions){
+        alarmActivated = FALSE;
+        alarm(timeout);
+        rejected = FALSE;
+        accepted = FALSE;
+        while (!(alarmActivated == TRUE || rejected || accepted)){
+            write(fd, message, frameSize); //Write I(0) frame to serial port
+            unsigned char res = readResponse(fd);
+            if(!res) continue;
+            switch(res){
+                case 0x05 | 0x85:
+                    accepted = TRUE;
+                    NTx = (NTx + 1) % 2;
+                    break;
+                case 0x01 | 0x81:
+                    rejected = TRUE;
+                    break;
+                default:
+                    break;
+            }
+        }
+        if(accepted) break;
+        nTransmission++;
+    }
+    free(message);
+    if(accepted) return frameSize;
+    else{
+        printf("Error sending frame\n");
+        return -1;
+    } 
 }
 
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(unsigned char *packet)
+int llread(int fd, unsigned char *packet)
 {
-    // TODO
+    
+    /*LinkLayerState state = START;
+    unsigned char byte;
+    unsigned char controlByte;
+
+    while(state != STOP) {
+        if(read(fd, &byte ,1) > 0) {
+            switch (state) {
+                
+                case START:
+                    if (byte == 0x7E) state = FLAG_RCV;
+                    break;
+
+                case FLAG_RCV:
+                    if (byte == 0x03) state = A_RCV;
+                    else if (byte != 0x7E) state = START;                        
+                    break;
+
+                case A_RCV:
+                    if (byte == 0x7E) state = FLAG_RCV;
+
+                    else if (byte == 0x0B) {
+                        supervisionWriter(fd, 0x7E, 0x01, 0x0B);
+                        return 0;
+                        }
+
+                    else if (byte == 0x00 || byte == 0x01) { // <--- O PROBLEMA
+                        state = C_RCV;
+                        controlByte = byte;
+                    }
+
+                    else state = START;
+                    break;
+                    
+                case C_RCV:
+                    if (byte == 0x7E) state = FLAG_RCV;
+                    else if (byte == 0x03 ^ controlByte) state = READING;
+                    else state = START;
+                    break;
+                
+                case READING:
+                    if (byte == 0x7D) state = DATA_FOUND;
+                    
+                    else if (byte == 0x7E) {
+                        // TODO
+                    }
+                    else {
+                        // TODO
+                    }
+                    break;
+                
+                case DATA_FOUND:
+                    state = READING;
+
+                    
+
+            }
+        }
+    }*/
+
+    static int packet = 0;
+    unsigned char message
 
     return 0;
 }
@@ -244,14 +337,14 @@ int llclose(int fd, LinkLayer connectionParameters)
                                 else state = START;
                                 break;
                             case BCC1_OK:
-                                if (byte == 0x7E) state = STOP_;
+                                if (byte == 0x7E) state = STOP;
                                 else state = START;
                                 break;
                             default:
                                 break;
                         }
                         
-                    }
+                    } 
             }
                  connectionParameters.nRetransmissions -= 1; // Decrements the number of retransmissions
             }
@@ -282,7 +375,7 @@ int llclose(int fd, LinkLayer connectionParameters)
                             else state = START;
                             break;
                         case BCC1_OK:
-                            if(byte == 0x7E) state = STOP_;
+                            if(byte == 0x7E) state = STOP;
                             else state = START;
                             break;
                         default:
@@ -307,7 +400,10 @@ int stuffing(unsigned char* buf, int start, int length, unsigned char* message) 
 
     for (int i = start; i < length; i++) {
         if(buf[i] == 0x7E || buf[i] == 0x7D) {
-            // nao sei o que fazer neste if
+            message[msgSize] = 0x7D;
+            msgSize++;
+            message[msgSize] = buf[i] ^ 0x20;
+            msgSize++;
         }
 
         else {
@@ -316,4 +412,68 @@ int stuffing(unsigned char* buf, int start, int length, unsigned char* message) 
     }
 
     return msgSize;
+}
+
+int destuffing(unsigned char* buf, int start, int length, unsigned char* message) {
+    int msgSize = 0;
+
+    for (int i = 0; i < start; i++) {
+        message[msgSize] = buf[i];
+        msgSize++;
+    }
+
+    for (int i = start; i < length; i++) {
+        if(buf[i] == 0x7D) {
+            message[msgSize] = buf[i+1] ^ 0x20;
+            msgSize++;
+            i++;
+        }
+        else {
+            message[msgSize] = buf[i];
+            msgSize++;
+        }
+    }
+    return msgSize;
+}
+
+int readResponse(int fd){
+    
+    unsigned char byte, controlByte = 0;
+    LinkLayerState state = START;
+    
+    while (state != STOP && alarmActivated == FALSE) {  
+        if (read(fd, &byte, 1) > 0 || 1) {
+            switch (state) {
+                case START:
+                    if (byte == 0x7E) state = FLAG_RCV;
+                    break;
+                case FLAG_RCV:
+                    if (byte == 0x01) state = A_RCV;
+                    else if (byte != 0x7E) state = START;
+                    break;
+                case A_RCV:
+                    if (byte == 0x05 || byte == 0x85 || byte == 0x01 || byte == 0x81){
+                        state = C_RCV;
+                        controlByte = byte;   
+                    }
+                    else if (byte == 0x7E) state = FLAG_RCV;
+                    else state = START;
+                    break;
+                case C_RCV:
+                    if (byte == (0x01 ^ controlByte)) state = BCC1_OK;
+                    else if (byte == 0x7E) state = FLAG_RCV;
+                    else state = START;
+                    break;
+                case BCC1_OK:
+                    if (byte == 0x7E){
+                        state = STOP;
+                    }
+                    else state = START;
+                    break;
+                default: 
+                    break;
+            }
+        } 
+    } 
+    return controlByte;
 }
