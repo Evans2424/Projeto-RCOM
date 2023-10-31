@@ -73,7 +73,9 @@ int supervisionWriter(int fd, unsigned char flag, unsigned char a, unsigned char
 
 int stuffing(unsigned char* buf, int start, int length, unsigned char* message);
 
-int destuffing(unsigned char* buf, int start, int length, unsigned char* message);
+//int destuffing(unsigned char* buf, int start, int length, unsigned char* message);
+
+int destuffing(unsigned char* buf, int *length);
 
 int readResponse(int fd);
 

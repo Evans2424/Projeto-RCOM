@@ -292,10 +292,112 @@ int llread(int fd, unsigned char *packet)
         }
     }*/
 
-    static int packet = 0;
-    unsigned char message
+    unsigned char *temp = NULL;
+    LinkLayer state = START;
+    int data_size = 0;
+    unsigned char buffer;
+    unsigned char data_received[10000];
+    int received = false;
+    int data_counter = 0;
+    int count = 0;
 
-    return 0;
+    while(!received) {
+
+        if(read(fd, &buffer, 1) < 0) {
+            printf("Error reading from serial port\n");
+            return -1;
+        }
+
+        else {
+            switch (state){
+                case START:
+                    data_counter++;
+                    if(buffer == 0x7E) {
+                        state = FLAG_RCV;
+                    }
+                    break;	
+
+                case FLAG_RCV:
+                    data_counter++;
+                    if (buffer == 0x03 || buffer == 0x01) {
+                        state = A_RCV;
+                    }
+                    else if (buffer == 0x7E) {
+                        state = FLAG_RCV;
+                    }
+                    else {
+                        state = START;
+                    }
+                    break;
+
+                case A_RCV:
+                    data_counter++;
+                    if (buffer == NRx || buffer == NTx ) {
+                        state = C_RCV;
+                    }
+                    else if (buffer == 0x7E) {
+                        state = FLAG_RCV;
+                    }
+                    else {
+                        state = START;
+                    }
+                    break;
+
+                case C_RCV:
+                    data_counter++;
+                    if (buffer == (0x01 ^ NRx) || buffer == (0x01 ^ NTx)) {
+                        state = DATA_FOUND;
+                    }
+                    else if (buffer == 0x7E) {
+                        state = FLAG_RCV;
+                    }
+                    else {
+                        state = START;
+                    }
+                    break;
+
+                case DATA_FOUND:
+                    data_counter++;
+                    if (buffer == 0x7E) {
+                        temp = destuffing(data_received, &data_size); 
+                        unsigned char post_bcc2 = data_received[0];
+
+                        for (int i = 1; i < data_size - 2; i++) {
+                            post_bcc2 ^= temp[i];
+                        }
+
+                        unsigned char bcc2 = temp[data_size - 1];
+
+                        if (bcc2 == post_bcc2) {
+                            received = true;
+                        }
+
+                        else {
+                            data_size = 0;
+                            received = false;
+                            data_counter = 0;
+                            state = START;
+                        }
+                    }
+                    
+                    else {
+                        data_size++;
+                        data_received[data_size - 1] = buffer;
+                    }
+
+                default:
+                    break;
+            }  
+        }
+    }
+    
+    //static int packet = 0;
+    //unsigned char message
+
+    unsigned char *final = (unsigned char*) malloc(sizeof(data_received));
+    if(data_received[0]) { llwrite(fd, 0x03, 0x05); }
+    *packet = data_size;
+    return temp;
 }
 
 ////////////////////////////////////////////////
@@ -414,7 +516,7 @@ int stuffing(unsigned char* buf, int start, int length, unsigned char* message) 
     return msgSize;
 }
 
-int destuffing(unsigned char* buf, int start, int length, unsigned char* message) {
+/*int destuffing(unsigned char* buf, int start, int length, unsigned char* message) {
     int msgSize = 0;
 
     for (int i = 0; i < start; i++) {
@@ -434,6 +536,23 @@ int destuffing(unsigned char* buf, int start, int length, unsigned char* message
         }
     }
     return msgSize;
+}*/
+
+int destuffing(unsigned char* buf, int *length) {
+    unsigned char * destuffed = NULL;
+    destuffed = (unsigned char*) malloc(*length * 2);
+    int j = 0;
+
+    for (int i = 0; i < *length; i++) {
+        if(buf[i] == 0x7D) {
+            destuffed[j] = buf[++i] ^ 0x20;
+        }
+        else 
+            destuffed[j] = buf[i];
+        j++;
+    }
+    *length = j;
+    return destuffed;
 }
 
 int readResponse(int fd){
