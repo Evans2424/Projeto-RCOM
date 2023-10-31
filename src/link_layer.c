@@ -232,6 +232,8 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(int fd, unsigned char *packet)
 {
+
+
     
     /*LinkLayerState state = START;
     unsigned char byte;
