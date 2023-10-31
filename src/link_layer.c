@@ -232,93 +232,25 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(int fd, unsigned char *packet)
 {
-    
-    /*LinkLayerState state = START;
-    unsigned char byte;
-    unsigned char controlByte;
+    unsigned char sequenceNumber;
+    LinkLayerState state = START;
+    unsigned char buffer, NSequence;
+    int packet_position;
 
     while(state != STOP) {
-        if(read(fd, &byte ,1) > 0) {
-            switch (state) {
-                
-                case START:
-                    if (byte == 0x7E) state = FLAG_RCV;
-                    break;
 
-                case FLAG_RCV:
-                    if (byte == 0x03) state = A_RCV;
-                    else if (byte != 0x7E) state = START;                        
-                    break;
-
-                case A_RCV:
-                    if (byte == 0x7E) state = FLAG_RCV;
-
-                    else if (byte == 0x0B) {
-                        supervisionWriter(fd, 0x7E, 0x01, 0x0B);
-                        return 0;
-                        }
-
-                    else if (byte == 0x00 || byte == 0x01) { // <--- O PROBLEMA
-                        state = C_RCV;
-                        controlByte = byte;
-                    }
-
-                    else state = START;
-                    break;
-                    
-                case C_RCV:
-                    if (byte == 0x7E) state = FLAG_RCV;
-                    else if (byte == 0x03 ^ controlByte) state = READING;
-                    else state = START;
-                    break;
-                
-                case READING:
-                    if (byte == 0x7D) state = DATA_FOUND;
-                    
-                    else if (byte == 0x7E) {
-                        // TODO
-                    }
-                    else {
-                        // TODO
-                    }
-                    break;
-                
-                case DATA_FOUND:
-                    state = READING;
-
-                    
-
-            }
-        }
-    }*/
-
-    unsigned char *temp = NULL;
-    LinkLayer state = START;
-    int data_size = 0;
-    unsigned char buffer;
-    unsigned char data_received[10000];
-    int received = false;
-    int data_counter = 0;
-    int count = 0;
-
-    while(!received) {
-
-        if(read(fd, &buffer, 1) < 0) {
+        if(read(fd, &buffer, 1) < 0) { //Leitura do byte
             printf("Error reading from serial port\n");
             return -1;
         }
-
-        else {
             switch (state){
                 case START:
-                    data_counter++;
                     if(buffer == 0x7E) {
                         state = FLAG_RCV;
                     }
                     break;	
 
                 case FLAG_RCV:
-                    data_counter++;
                     if (buffer == 0x03 || buffer == 0x01) {
                         state = A_RCV;
                     }
@@ -331,11 +263,15 @@ int llread(int fd, unsigned char *packet)
                     break;
 
                 case A_RCV:
-                    data_counter++;
-                    if (buffer == NRx || buffer == NTx ) {
+                    if (buffer == 0x00 ){ //Se for I0
                         state = C_RCV;
+                        NSequence = 0;
                     }
-                    else if (buffer == 0x7E) {
+                    else if (buffer == 0x40) { //Se for I1
+                        state = C_RCV;
+                        NSequence = 1;
+                    }
+                    else if(buffer == 0x7E){
                         state = FLAG_RCV;
                     }
                     else {
@@ -344,11 +280,13 @@ int llread(int fd, unsigned char *packet)
                     break;
 
                 case C_RCV:
-                    data_counter++;
-                    if (buffer == (0x01 ^ NRx) || buffer == (0x01 ^ NTx)) {
+                    if (NSequence == 0 && buffer == (0x03 ^ 0x00)){ //Se for I0
                         state = DATA_FOUND;
                     }
-                    else if (buffer == 0x7E) {
+                    else if (NSequence == 1 && buffer == (0x03 ^ 0x40)){ //Se for I1) {
+                        state = DATA_FOUND;
+                    }
+                    else if(buffer == 0x7E){
                         state = FLAG_RCV;
                     }
                     else {
@@ -357,48 +295,59 @@ int llread(int fd, unsigned char *packet)
                     break;
 
                 case DATA_FOUND:
-                    data_counter++;
-                    if (buffer == 0x7E) {
-                        temp = destuffing(data_received, &data_size); 
-                        unsigned char post_bcc2 = data_received[0];
-
-                        for (int i = 1; i < data_size - 2; i++) {
-                            post_bcc2 ^= temp[i];
-                        }
-
-                        unsigned char bcc2 = temp[data_size - 1];
-
-                        if (bcc2 == post_bcc2) {
-                            received = true;
-                        }
-
-                        else {
-                            data_size = 0;
-                            received = false;
-                            data_counter = 0;
-                            state = START;
-                        }
+                    if (buffer == 0x7D) {
+                        state = DESTUFFING;
                     }
-                    
-                    else {
-                        data_size++;
-                        data_received[data_size - 1] = buffer;
-                    }
+                    else if(buffer == 0x7E){
+                        unsigned char bcc2 = packet[--packet_position];
+                        packet[packet_position] = '\0';
+                        
+                        unsigned char xor = 0x00;
+                        for(int j = 0; j < packet_position; j++){
+                            xor ^= packet[j];
+                        }
 
+                        if(xor == bcc2){
+                            state = STOP;
+                            // send RR
+                            unsigned char C_RR = NSequence == 0 ? 0x05 : 0x85;
+                            supervisionWriter(fd, 0x7E, 0x03,C_RR);
+                            // check if it is not a repeated packet
+                            if(NSequence == sequenceNumber){
+                                sequenceNumber = (sequenceNumber + 1) % 2;
+                                return packet_position;
+                            }
+                            return 0;
+                        }else{
+                            // send REJ (i_n)
+                            unsigned char C_RJ = NSequence == 0 ? 0x01 : 0x81;
+                            supervisionWriter(fd, 0x7E, 0x03,C_RJ);
+                        }
+                    }else{
+                        packet[packet_position++] = buffer;
+                    }
+                    break;
+                
+                case DESTUFFING:
+                    if(buffer == 0x5E){
+                        packet[packet_position++] = 0x7E;
+                    }else if(buffer == 0x5D){
+                        packet[packet_position++] = 0x7D;
+                    }else{
+                        packet[packet_position++] = buffer;
+                    }
+                    state = DATA_FOUND;
+                    break;
+    
                 default:
                     break;
             }  
         }
+        return -1;
     }
     
-    //static int packet = 0;
-    //unsigned char message
+    
 
-    unsigned char *final = (unsigned char*) malloc(sizeof(data_received));
-    if(data_received[0]) { llwrite(fd, 0x03, 0x05); }
-    *packet = data_size;
-    return temp;
-}
 
 ////////////////////////////////////////////////
 // LLCLOSE
@@ -538,22 +487,6 @@ int stuffing(unsigned char* buf, int start, int length, unsigned char* message) 
     return msgSize;
 }*/
 
-int destuffing(unsigned char* buf, int *length) {
-    unsigned char * destuffed = NULL;
-    destuffed = (unsigned char*) malloc(*length * 2);
-    int j = 0;
-
-    for (int i = 0; i < *length; i++) {
-        if(buf[i] == 0x7D) {
-            destuffed[j] = buf[++i] ^ 0x20;
-        }
-        else 
-            destuffed[j] = buf[i];
-        j++;
-    }
-    *length = j;
-    return destuffed;
-}
 
 int readResponse(int fd){
     

@@ -29,8 +29,8 @@ typedef enum{
     BCC1_OK,
     READING,
     DATA_FOUND,
-    STOP
-
+    STOP,
+    DESTUFFING
 } LinkLayerState;
 
 
@@ -46,7 +46,6 @@ typedef struct
 // SIZE of maximum acceptable payload.
 // Maximum number of bytes that application layer should send to link layer
 #define MAX_PAYLOAD_SIZE 1000
-#define BAUDRATE 38400
 
 // MISC
 #define FALSE 0
