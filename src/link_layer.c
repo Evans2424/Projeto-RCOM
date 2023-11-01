@@ -36,14 +36,14 @@ int connect(const char* serialPort){
     // Clear struct for new port settings
     memset(&newtio, 0, sizeof(newtio));
 
-    newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
+    newtio.c_cflag = 9600 | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     
     tcflush(fd, TCIOFLUSH);
@@ -60,12 +60,14 @@ int connect(const char* serialPort){
 }
 
 void alarmHandler(int signal){
+    printf("Alarm ringing!\n");
+
     alarmActivated = TRUE;
     alarmCount++;
 }
 
 int supervisionWriter(int fd, unsigned char flag, unsigned char a, unsigned char c) {
-    unsigned char frame[5];
+    unsigned char frame[5] = {0};
     frame[0] = flag;
     frame[1] = a;
     frame[2] = c;
@@ -75,7 +77,8 @@ int supervisionWriter(int fd, unsigned char flag, unsigned char a, unsigned char
 }
 
 int llopen(LinkLayer connectionParameters) {
-    
+    // Subscribe the alarm interruptions. When it receives an interruption the alarmHandler is called, and alarmActivated is set to TRUE.
+
     LinkLayerState state = START;
     timeout = connectionParameters.timeout;
     retransmitions = connectionParameters.nRetransmissions;
@@ -86,25 +89,37 @@ int llopen(LinkLayer connectionParameters) {
         return -1; 
     }
 
-    unsigned char byte; // Variable to store each byte of the received command. 
+     // Variable to store each byte of the received command. 
 
     switch (connectionParameters.role) {
-        case LlTx:  
-            (void) signal(SIGALRM, alarmHandler); // Subscribe the alarm interruptions. When it receives an interruption the alarmHandler is called, and alarmActivated is set to TRUE.
-            while (connectionParameters.nRetransmissions != 0 && state != STOP) { // This loop is going to try to send the SET command, and wait for the UA response from the receiver
-                supervisionWriter(fd, 0x7E, 0x03, 0x03); // Construction of SET Supervision command. 
-                alarm(connectionParameters.timeout); // Sets the alarm to the timeout value, so that it waits n seconds to try to retrieve the UA commands
-                alarmActivated = FALSE; // Sets the alarmActivated to FALSE so that it enters the while loop below.
-            
-                while (state != STOP && alarmActivated == FALSE) { // Cycle to read the UA Command from receiver, it stops when it reaches the STOP state, or the alarm is activated (timeout).s
+        case LlTx: {  
+            (void) signal(SIGALRM, alarmHandler); 
+            int tries = 0;
+            printf("nRetransmissions: %d\n", connectionParameters.nRetransmissions);
+            while (tries < connectionParameters.nRetransmissions && state != STOP) { // This loop is going to try to send the SET command, and wait for the UA response from the receiver
+                printf("Trial number: %d\n", tries);
+                if (supervisionWriter(fd, 0x7E, 0x03, 0x03) < 0){// Construction of SET Supervision command. 
+                    printf("Error writing to serial port\n");
+                }
 
-                    if (read(fd, &byte, 1) > 0) { // Reads one byte at a time
+                alarmActivated = FALSE; 
+                alarm(connectionParameters.timeout); // Sets the alarm to the timeout value, so that it waits n seconds to try to retrieve the UA commands
+                 // Sets the alarmActivated to FALSE so that it enters the while loop below.
+
+                while (alarmActivated == FALSE && state != STOP) { // Cycle to read the UA Command from receiver, it stops when it reaches the STOP state, or the alarm is activated (timeout).s
+                    printf("im here");
+                    printf("alarm: %d\n", alarmActivated);
+                    unsigned char byte;
+                    if (read(fd, &byte, 1) < 0) {// Reads one byte at a time
+                         perror("read");
+                         exit(-1);
+                    }
                         switch (state) {
                             case START:
                                 if (byte == 0x7E) state = FLAG_RCV;
                                 break;
                             case FLAG_RCV:
-                                if (byte == 0x01) state = A_RCV;
+                                if (byte == 0x03) state = A_RCV;
                                 else if (byte != 0x7E) state = START;
                                 break;
                             case A_RCV:
@@ -113,11 +128,13 @@ int llopen(LinkLayer connectionParameters) {
                                 else state = START;
                                 break;
                             case C_RCV:
-                                if (byte == (0x01 ^ 0x07)) state = BCC1_OK;
+                                printf("control byte");
+                                if (byte == (0x03 ^ 0x07)) state = BCC1_OK;
                                 else if (byte == 0x7E) state = FLAG_RCV;
                                 else state = START;
                                 break;
                             case BCC1_OK:
+                                printf("connection ok\n");
                                 if (byte == 0x7E) state = STOP;
                                 else state = START;
                                 break;
@@ -125,14 +142,21 @@ int llopen(LinkLayer connectionParameters) {
                                 break;
                         }
                         
-                    }
+                    }     
+                    tries++; 
             }
-                 connectionParameters.nRetransmissions -= 1; // Decrements the number of retransmissions
-            }
+            
+                  
+            
             if (state != STOP) return -1; 
+            printf("Connection \n");
+            break;
+        }
+
         case LlRx:
 
             while(state != STOP) {
+                unsigned char byte;
                 if(read( fd, &byte, 1) > 0) {
                     printf("reading");
                     switch (state) {
@@ -164,6 +188,10 @@ int llopen(LinkLayer connectionParameters) {
             }   
 
             supervisionWriter(fd, 0x7E, 0x01, 0x07);
+            break;
+        
+        default:
+            break;
         }
 
 return 1;
@@ -180,8 +208,8 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
 
     frame[0] = 0x7E;
     frame[1] = 0x03;
-    frame[2] = 0x00; //Transmitter n= 0
-    frame[3] = frame[0] ^ frame[2];
+    frame[2] = NTx == 0 ? 0x00 : 0x40;
+    frame[3] = frame[1] ^ frame[2];
 
     unsigned char bcc2 = buf[0];
     for (int i = 1; i < bufSize; i++) { //XOR between all the data bytes in buf

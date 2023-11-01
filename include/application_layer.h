@@ -22,4 +22,9 @@
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename);
 
+
+ unsigned char* getDataPacket(unsigned char *data, int dataSize, int *packetSize);
+
+ unsigned char* parseCtrlPacket(unsigned char* packet, int size, unsigned long int *fileSize);
+
 #endif // _APPLICATION_LAYER_H_
