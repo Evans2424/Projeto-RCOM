@@ -70,12 +70,12 @@ int llclose(int fd, LinkLayer connectionParameters);
 
 int supervisionWriter(int fd, unsigned char flag, unsigned char a, unsigned char c);
 
-int stuffing(unsigned char* buf, int start, int length, unsigned char* message);
+int stuffing(unsigned char* buf, int start, int length, unsigned char* message, unsigned char bcc2);
 
 //int destuffing(unsigned char* buf, int start, int length, unsigned char* message);
 
 int destuffing(unsigned char* buf, int *length);
 
-int readResponse(int fd);
+unsigned char readResponse(int fd);
 
 #endif // _LINK_LAYER_H_

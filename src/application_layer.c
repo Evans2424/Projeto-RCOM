@@ -22,7 +22,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     switch(linkLayer.role)
     {
         case LlTx:
-           printf("im here\n");
+           
            FILE* file = fopen(filename, "r");
 
             if(file == NULL){
@@ -56,7 +56,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             char *buffer = (char *)malloc(filesize);
             fread(buffer, filesize, 1, file);
             fclose(file);
-
+            printf("File read\n");
             //write packet
             if(llwrite(fd, controlPacket, packetSize) < 0){ //o write do dobby tem mais um parametro (?)
                 printf("Error sending control packet\n");
