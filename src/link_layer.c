@@ -77,7 +77,7 @@ int supervisionWriter(int fd, unsigned char flag, unsigned char a, unsigned char
 }
 
 int llopen(LinkLayer connectionParameters) {
-    // Subscribe the alarm interruptions. When it receives an interruption the alarmHandler is called, and alarmActivated is set to TRUE.
+    (void) signal(SIGALRM, alarmHandler); // Subscribe the alarm interruptions. When it receives an interruption the alarmHandler is called, and alarmActivated is set to TRUE.
 
     LinkLayerState state = START;
     timeout = connectionParameters.timeout;
@@ -93,7 +93,6 @@ int llopen(LinkLayer connectionParameters) {
 
     switch (connectionParameters.role) {
         case LlTx: {  
-            (void) signal(SIGALRM, alarmHandler); 
             int tries = 0;
             printf("nRetransmissions: %d\n", connectionParameters.nRetransmissions);
             while (tries < connectionParameters.nRetransmissions && state != STOP) { // This loop is going to try to send the SET command, and wait for the UA response from the receiver
