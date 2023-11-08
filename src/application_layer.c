@@ -81,7 +81,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 int dataSize = bytesLeft > MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : bytesLeft;
                 
                 unsigned char* data = (unsigned char*) malloc(dataSize);
-                memcpy(data, buffer, dataSize);
+                memcpy(data, buffer + bytesSent, dataSize);
 
                 int packetSize;
                 unsigned char* packet = getDataPacket(data, dataSize, &packetSize);
@@ -129,31 +129,57 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             printf("Packet size: %d\n", packetSize2);
             printf("Received start packet\n");
 
-            unsigned long fileSizeRx = 0;
-            //unsigned char *fileName = parseCtrlPacket(packet, packetSize2, &fileSizeRx);
-            /*
-            FILE* newFile = fopen((char *)fileName, "wb");
-
+            unsigned long fileSizeRx;
+            
+            unsigned char *fileName = parseCtrlPacket(startPacket, packetSize2, &fileSizeRx);
+            //print file name
+            printf("File name: %s\n", fileName);
+            //print file size
+            printf("File size: %lu\n", fileSizeRx);
+            //create filename as the strinf "received"
+            char *newFileName = malloc(strlen(fileName) + 9);
+            strcpy(newFileName, "received.gif");
+            
+            FILE* newFile = fopen((char *)newFileName, "wb+");
+            free(startPacket);
+            unsigned char *dataPacket =  (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
             while(TRUE) {
-                
+                packetSize2 = -1;
                 while (packetSize2 < 0) {
-                    packetSize2 = llread(fd, packet);
+                    
+                    packetSize2 = llread(fd, dataPacket);
+                }
+                
+                //if(packetSize2 == 0) break;
+                
+
+
+                if(dataPacket[0] != 3) {
+
+                    unsigned char* packet = (unsigned char*)malloc(packetSize2 + 2);
+
+                    packet[0] = 1;   
+                    packet[1] = dataPacket[1];
+                    packet[2] = packetSize2 >> 8 & 0xFF;
+                    packet[3] = packetSize2 & 0xFF;
+    
+
+
+                    unsigned char L2 = dataPacket[1];
+                    unsigned char L1 = dataPacket[2];
+                    unsigned int k = (L2 << 8) | L1;
+
+                    printf("HELPHEL\n");
+                    fwrite(packet, sizeof(unsigned char), packetSize2 - 4, newFile);
+                    free(packet);
                 }
 
-                if(packetSize2 == 0) break;
-
-                else if(packet[0] != 3) {
-                    unsigned char *buff = malloc(packetSize2);
-
-                    memcpy(buff, packet + 4, packetSize2 - 4);
-                    fwrite(buff, 1, packetSize2 - 4, newFile);
-                    free(buff);
-                }
-                else continue;
+                else{
+                printf("End control packet received\n");
+                break;
             }
-            */
-
-            //fclose(newFile);
+            fclose(newFile);
+            }
             break;
     }
  }
@@ -170,13 +196,15 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
  }
 
- unsigned char* parseCtrlPacket(unsigned char* packet, int size, unsigned long int *fileSize) {
+ unsigned char* parseCtrlPacket(unsigned char* packet, int size, unsigned long *fileSize) {
 
     unsigned char fileSizeBytes = packet[2];
     unsigned char sizeAux[fileSizeBytes];
 
     memcpy(sizeAux, packet + 3, fileSizeBytes);
-    for (unsigned int i = 0; i < fileSizeBytes; i++) *fileSize |= (sizeAux[fileSizeBytes - i - 1] << (8 * i));
+    for (unsigned int i = 0; i < fileSizeBytes; i++){
+        *fileSize |= (sizeAux[fileSizeBytes - i - 1] << (8 * i));
+    } 
 
     unsigned char fileNameBytes = packet[3 + fileSizeBytes+1];
     unsigned char *name = (unsigned char *) malloc(fileNameBytes);

@@ -236,7 +236,7 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
     
     
     int nTransmission = 0;
-    int rejected = FALSE, accepted = FALSE;
+    int rejected, accepted;
 
     while(nTransmission < retransmitions){
         alarmActivated = FALSE;
@@ -251,14 +251,17 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
                 continue;
             }
             //Print res
+            printf("res: %x\n", res);
             
             switch(res){
-                case 0x05 | 0x85:
+                case 0x05:
+                case 0x85:
                     printf("Frame accepted\n");
                     accepted = TRUE;
                     NTx = (NTx + 1) % 2;
                     break;
-                case 0x01 | 0x81:
+                case 0x01:
+                case 0x81:
                     printf("Frame rejected\n");
                     rejected = TRUE;
                     break;
@@ -303,6 +306,7 @@ int llread(int fd, unsigned char *packet)
 
                 case FLAG_RCV:
                     if (buffer == 0x03 || buffer == 0x01) {
+                        printf("Flag RCV");
                         state = A_RCV;
                     }
                     else if (buffer == 0x7E) {
@@ -318,7 +322,8 @@ int llread(int fd, unsigned char *packet)
                         state = C_RCV;
                         NSequence = 0;
                     }
-                    else if (buffer == 0x40) { //Se for I1
+                    else if (buffer == 0x40) {
+                        printf("É I1 \n"); //Se for I1
                         state = C_RCV;
                         NSequence = 1;
                     }
@@ -332,10 +337,11 @@ int llread(int fd, unsigned char *packet)
 
                 case C_RCV:
                     if (NSequence == 0 && buffer == (0x03 ^ 0x00)){
-                        printf("IM here\n"); //Se for I0
+                         //Se for I0
                         state = DATA_FOUND;
                     }
-                    else if (NSequence == 1 && buffer == (0x03 ^ 0x40)){ //Se for I1) {
+                    else if (NSequence == 1 && buffer == (0x03 ^ 0x40)){
+                         //Se for I1) {
                         state = DATA_FOUND;
                     }
                     else if(buffer == 0x7E){
@@ -348,7 +354,6 @@ int llread(int fd, unsigned char *packet)
 
                 case DATA_FOUND:
                     if (buffer == 0x7D) {
-                        printf("\nDestuffing\n");
                         state = DESTUFFING;
                     }
                     else if(buffer == 0x7E){
@@ -361,7 +366,7 @@ int llread(int fd, unsigned char *packet)
                         }
 
                         if(xor == bcc2){
-                            printf("Checked stuff\n");
+                            
                             state = STOP;
                             // send RR
                             unsigned char C_RR = NSequence == 0 ? 0x05 : 0x85;
