@@ -420,15 +420,21 @@ int llclose(int fd, LinkLayer connectionParameters)
     unsigned char byte; // Variable to store each byte of the received command. 
 
     switch (connectionParameters.role) {
-        case LlTx:  
+        case LlTx: {
+            
+            printf("Closing as transmitter\n");
             (void) signal(SIGALRM, alarmHandler); // Subscribe the alarm interruptions. When it receives an interruption the alarmHandler is called, and alarmActivated is set to TRUE.
-            while (connectionParameters.nRetransmissions != 0 && state != STOP) { // This loop is going to try to send the DISC command, and wait for the DISC response from the receiver
+            int tries = 0;
+            while (tries < connectionParameters.nRetransmissions != 0 && state != STOP) { // This loop is going to try to send the DISC command, and wait for the DISC response from the receiver
                 supervisionWriter(fd, 0x7E, 0x03, 0x0B); // Construction of DISC Supervision command. 
                 alarm(connectionParameters.timeout); // Sets the alarm to the timeout value, so that it waits n seconds to try to retrieve the DISC command
                 alarmActivated = FALSE; // Sets the alarmActivated to FALSE so that it enters the while loop below.
             
                 while (state != STOP && alarmActivated == FALSE) { // Cycle to read the DISC Command from receiver, it stops 
-                    if (read(fd, &byte, 1) > 0) { // Reads one byte at a time
+                    if (read(fd, &byte, 1) < 0) { 
+                        perror("read");
+                        exit(-1);
+                        }
                         switch (state) {
                             case START:
                                 if (byte == 0x7E) state = FLAG_RCV;
@@ -443,7 +449,7 @@ int llclose(int fd, LinkLayer connectionParameters)
                                 else state = START;
                                 break;
                             case C_RCV:
-                                if (byte == (0x01 ^ 0x0)) state = BCC1_OK;
+                                if (byte == (0x01 ^ 0x0B)) state = BCC1_OK;
                                 else if (byte == 0x7E) state = FLAG_RCV;
                                 else state = START;
                                 break;
@@ -453,35 +459,115 @@ int llclose(int fd, LinkLayer connectionParameters)
                                 break;
                             default:
                                 break;
-                        }
-                        
-                    } 
+                        }              
             }
-                 connectionParameters.nRetransmissions -= 1; // Decrements the number of retransmissions
+                 tries++; // increment number of tries
             }
             if (state != STOP) return -1; 
+            printf("Writing supervision command UA to Rx\n");
             supervisionWriter(fd, 0x7E, 0x03, 0x07); // Construction of UA Supervision command.
+            break;
+    }
 
-        case LlRx:
+        case LlRx: {
+
+            printf("Closing as receiver\n");
+            //Receiving DISC command
+            unsigned char byte;
+            state = START;
 
             while(state != STOP) {
-                if(read( fd, &byte, 1) > 0) {
-                    printf("reading");
+                
+                if(read( fd, &byte, 1) < 0) {
+                    perror("read");
+                    exit(-1);
+
+                }
+
                     switch (state) {
                         case START:
-                            if (byte == 0x7E) state = FLAG_RCV;
+                            
+                            if (byte == 0x7E){
+                             printf("Correct flag\n");
+                             state = FLAG_RCV;
+                            }
                             break;
-                        case FLAG_RCV:
-                            if(byte == 0x03) state = A_RCV;
+                        case FLAG_RCV:                            
+                            //print byte
+                            printf("byte: %x\n", byte);
+
+                            if(byte == 0x03){
+                                printf("ARCVDISC\n");
+                                state = A_RCV;
+                            }
+                             
                             else if (byte != 0x7E) state = START;
                             break;
                         case A_RCV:
-                            if(byte == 0x07) state = C_RCV;
+                            if(byte == 0x0B){
+                                printf("ARCVDISC\n");
+                                state = C_RCV;
+                            }
+                             
                             else if (byte == 0x7E) state = FLAG_RCV;
                             else state = START;
                             break;
                         case C_RCV:
-                            if(byte == (0x03 ^ 0x03)) state = BCC1_OK;
+                            if(byte == (0x03 ^ 0x0B)) state = BCC1_OK;
+                            else if (byte == 0x7E) state = FLAG_RCV;
+                            else state = START;
+                            break;
+                        case BCC1_OK:
+                            if(byte == 0x7E){
+                                printf("Read disc commmand successfully\n");
+                                state = STOP;
+                            } 
+                            else state = START;
+                            break;
+                        default:
+                            break;
+                    }
+            }
+                
+            if (state != STOP) return -1;
+            printf("Writing supervision command DISC to Tx\n");
+            supervisionWriter(fd, 0x7E, 0x01, 0x0B); // Construction of DISC Supervision command.
+                
+            state = START;
+
+            while(state != STOP) {
+
+                if(read( fd, &byte, 1) < 0) {
+                    perror("read");
+                    exit(-1);
+                }
+                    
+                    switch (state) {
+                        case START:
+                            if (byte == 0x7E){
+                                printf("ACCEPTED flag\n");
+                                state = FLAG_RCV;
+                            }
+                             
+                            break;
+
+                        case FLAG_RCV:
+                            if(byte == 0x03){
+                                printf("ARCVDISC\n");
+                                state = A_RCV;
+                            } 
+                            else if (byte != 0x7E) state = START;
+                            break;
+                        case A_RCV:
+                            if(byte == 0x07){
+                             printf("Accepted UA flag\n");
+                             state = C_RCV;
+                            }
+                            else if (byte == 0x7E) state = FLAG_RCV;
+                            else state = START;
+                            break;
+                        case C_RCV:
+                            if(byte == (0x03 ^ 0x07)) state = BCC1_OK;
                             else if (byte == 0x7E) state = FLAG_RCV;
                             else state = START;
                             break;
@@ -493,13 +579,16 @@ int llclose(int fd, LinkLayer connectionParameters)
                             break;
                     }
                 }
-            }   
 
-            supervisionWriter(fd, 0x7E, 0x03, 0x0B);
+             if (state != STOP) return -1;
+             
+                printf("Connection closed\n");
+                return close(fd);
+                
         }
-
-return close(fd);
+    }
 }
+
 
 int stuffing(unsigned char *buf, int bufSize, unsigned char *frame, int frameSize, unsigned char bcc2) {
 
@@ -607,8 +696,8 @@ unsigned char readResponse(int fd){
                 default: 
                     break;
         }
+    }
         
-    } 
     printf("CONTROl byte: %x\n", controlByte);
     return controlByte;
 } 

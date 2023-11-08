@@ -141,7 +141,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             strcpy(newFileName, "received.gif");
             
             FILE* newFile = fopen((char *)newFileName, "wb+");
-            free(startPacket);
             unsigned char *dataPacket =  (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
             while(TRUE) {
                 packetSize2 = -1;
@@ -152,34 +151,25 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 
                 //if(packetSize2 == 0) break;
                 
+        
 
-
-                if(dataPacket[0] != 3) {
-
-                    unsigned char* packet = (unsigned char*)malloc(packetSize2 + 2);
-
-                    packet[0] = 1;   
-                    packet[1] = dataPacket[1];
-                    packet[2] = packetSize2 >> 8 & 0xFF;
-                    packet[3] = packetSize2 & 0xFF;
-    
-
-
-                    unsigned char L2 = dataPacket[1];
-                    unsigned char L1 = dataPacket[2];
-                    unsigned int k = (L2 << 8) | L1;
-
-                    printf("HELPHEL\n");
-                    fwrite(packet, sizeof(unsigned char), packetSize2 - 4, newFile);
-                    free(packet);
+                if(dataPacket[0] != 3) {              
+                    printf("We need to write on the file");           
                 }
 
                 else{
                 printf("End control packet received\n");
                 break;
             }
-            fclose(newFile);
             }
+            free(dataPacket);
+            free(startPacket);
+            free(fileName);
+            free(newFileName);
+            fclose(newFile);
+
+            llclose(fd, linkLayer);
+
             break;
     }
  }
@@ -213,3 +203,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     return name;
  }
+
+ void parseDataPacket(const unsigned char* packet, const unsigned int packetSize, unsigned char* buffer) {
+    memcpy(buffer,packet+4,packetSize-4);
+    buffer += packetSize+4;
+}
