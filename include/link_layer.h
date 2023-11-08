@@ -70,7 +70,7 @@ int llclose(int fd, LinkLayer connectionParameters);
 
 int supervisionWriter(int fd, unsigned char flag, unsigned char a, unsigned char c);
 
-int stuffing(unsigned char* buf, int start, int length, unsigned char* message, unsigned char bcc2);
+int stuffing(unsigned char *buf, int bufSize, unsigned char *frame, int frameSize, unsigned char bcc2);
 
 //int destuffing(unsigned char* buf, int start, int length, unsigned char* message);
 

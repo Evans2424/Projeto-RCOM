@@ -45,18 +45,28 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             controlPacket[pos++] = 0x02; //START control packet
             controlPacket[pos++] = 0x00; //Tamanho do ficheiro
             controlPacket[pos++] = sizeofFile;
-            int j = 3;
-            for (unsigned char i = 0; i < sizeofFile; i++) controlPacket[j + i] = (filesize >> (8 * i)) & 0xFF; //Put filesize in bytes
-            controlPacket[j++] = 0x01;
-            controlPacket[j++] = len;
             
-            memcpy(controlPacket + j + sizeofFile, filename, len);
+            for (unsigned char i = 0; i < sizeofFile; i++) controlPacket[3 + i] = (filesize >> (8 * i)) & 0xFF; //Put filesize in bytes
+            controlPacket[3 + sizeofFile] = 0x01;
+            controlPacket[4 + sizeofFile] = len;
+            
+            memcpy(controlPacket + 5 + sizeofFile, filename, len);
             
             //read file
             char *buffer = (char *)malloc(filesize);
             fread(buffer, filesize, 1, file);
             fclose(file);
-            printf("File read\n");
+            //print control packet size
+            printf("File size in bytes: %d\n", filesize);
+            printf("Control packet size: %d\n", packetSize);
+
+            //print control packet content
+            printf("Control packet content: ");
+            for(int i = 0; i < packetSize; i++){
+                printf("%x ", controlPacket[i]);
+            }
+
+            
             //write packet
             if(llwrite(fd, controlPacket, packetSize) < 0){ //o write do dobby tem mais um parametro (?)
                 printf("Error sending control packet\n");
@@ -89,7 +99,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             unsigned char *controlPacketFinal = malloc(packetSize);
             memcpy(controlPacketFinal, controlPacket, packetSize);
             controlPacketFinal[0] = 0x03; // control field end
-
+            //print control packet size
+            printf("Control packet size: %d\n", filesize);
+            
             //write control packet
             if(llwrite(fd, controlPacketFinal, packetSize) == -1) { 
                 printf("Error in end control packet\n");
@@ -104,17 +116,22 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             break;
         
         case LlRx:
-            
-            unsigned char *packet = malloc(MAX_PAYLOAD_SIZE);
             int packetSize2 = -1;
-
-            while(packetSize2 < 0){
-                packetSize2 = llread(fd, packet);
+            unsigned char *startPacket =  (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+            while ((packetSize2 < 0)){
+                packetSize2 = llread(fd, startPacket);
             }
+            if (startPacket[0] != 2) {
+                printf("Invalid start control packet\n");
+                exit(-1);
+            }
+            //print packet size2
+            printf("Packet size: %d\n", packetSize2);
+            printf("Received start packet\n");
 
             unsigned long fileSizeRx = 0;
-            unsigned char *fileName = parseCtrlPacket(packet, packetSize2, &fileSizeRx);
-
+            //unsigned char *fileName = parseCtrlPacket(packet, packetSize2, &fileSizeRx);
+            /*
             FILE* newFile = fopen((char *)fileName, "wb");
 
             while(TRUE) {
@@ -134,8 +151,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 }
                 else continue;
             }
+            */
 
-            fclose(newFile);
+            //fclose(newFile);
             break;
     }
  }

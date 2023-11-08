@@ -221,14 +221,18 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
     frame[1] = 0x03;
     frame[2] = NTx == 0 ? 0x00 : 0x40;
     frame[3] = frame[1] ^ frame[2];
-    unsigned char bcc2 = buf[0];
-    for (int i = 1; i < bufSize; i++) { //XOR between all the data bytes in buf
+
+    unsigned char bcc2 = 0x00;
+    for (int i = 0; i < bufSize; i++) { //XOR between all the data bytes in buf
         bcc2 ^= buf[i];
     }
+    frameSize = stuffing(buf, bufSize, frame, frameSize, bcc2);
+    
 
-    unsigned char* message = (unsigned char*) malloc(frameSize * 2);
-    frameSize = stuffing(frame, 1, frameSize, message, bcc2);
-    printf("frameSize: %d\n", frameSize);
+     //print message
+    for(int i = 0; i < frameSize; i++){
+        printf("%x ", frame[i]);
+    }
     
     
     int nTransmission = 0;
@@ -240,7 +244,7 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
         rejected = FALSE;
         accepted = FALSE;
         while (!(alarmActivated == TRUE || rejected || accepted)){
-            write(fd, message, frameSize); //Write I(0) frame to serial port
+            write(fd, frame, frameSize); //Write I(0) frame to serial port
             unsigned char res = readResponse(fd);
             if(!res){
                 printf("Error reading response\n");
@@ -263,9 +267,9 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
             }
         }
         if(accepted) return frameSize;
-        nTransmission++;
+    nTransmission++;
     }
-    free(message);
+    free(frame);
     if(accepted) return frameSize;
     else{
         printf("Error sending frame\n");
@@ -278,10 +282,11 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(int fd, unsigned char *packet)
 {
-    unsigned char sequenceNumber;
+    printf("this is llread");
+    unsigned char sequenceNumber = 0;
     LinkLayerState state = START;
     unsigned char buffer, NSequence;
-    int packet_position;
+    int packet_position = 0;
 
     while(state != STOP) {
 
@@ -326,7 +331,8 @@ int llread(int fd, unsigned char *packet)
                     break;
 
                 case C_RCV:
-                    if (NSequence == 0 && buffer == (0x03 ^ 0x00)){ //Se for I0
+                    if (NSequence == 0 && buffer == (0x03 ^ 0x00)){
+                        printf("IM here\n"); //Se for I0
                         state = DATA_FOUND;
                     }
                     else if (NSequence == 1 && buffer == (0x03 ^ 0x40)){ //Se for I1) {
@@ -342,6 +348,7 @@ int llread(int fd, unsigned char *packet)
 
                 case DATA_FOUND:
                     if (buffer == 0x7D) {
+                        printf("\nDestuffing\n");
                         state = DESTUFFING;
                     }
                     else if(buffer == 0x7E){
@@ -354,9 +361,11 @@ int llread(int fd, unsigned char *packet)
                         }
 
                         if(xor == bcc2){
+                            printf("Checked stuff\n");
                             state = STOP;
                             // send RR
                             unsigned char C_RR = NSequence == 0 ? 0x05 : 0x85;
+                            printf("C_RR: %x\n", C_RR);
                             supervisionWriter(fd, 0x7E, 0x03,C_RR);
                             // check if it is not a repeated packet
                             if(NSequence == sequenceNumber){
@@ -487,49 +496,34 @@ int llclose(int fd, LinkLayer connectionParameters)
 return close(fd);
 }
 
-int stuffing(unsigned char* buf, int start, int length, unsigned char* message, unsigned char bcc2) {
-    int msgSize = 0;
-    for (int i = 0; i < start; i++) {
-        message[msgSize] = buf[i];
-        msgSize++;
-    }
-    for (int i = start; i < length; i++) {
-        if(buf[i] == 0x7E || buf[i] == 0x7D) {
-            message[msgSize] = 0x7D;
-            msgSize++;
-            message[msgSize] = buf[i] ^ 0x20;
-            msgSize++;
+int stuffing(unsigned char *buf, int bufSize, unsigned char *frame, int frameSize, unsigned char bcc2) {
+
+    int i = 4;
+    for (int j = 0; j < bufSize; j++) { //Percorre o buffer / dados 
+        if(buf[j] == 0x7E || buf[j] == 0x7D) {
+            frame = (unsigned char *) realloc(frame, ++frameSize );
+            frame[i++] = 0x7D;
+            frame[i++] = buf[j] ^ 0x20;
         }
 
         else {
-            message[msgSize] = buf[i];
-            msgSize++;
+            frame[i++] = buf[j];
         }
     }
 
+    // BCC2 Stuffing
     if(bcc2 == 0x7E || bcc2 == 0x7D){
-            printf("IM HERE ");
-            message = (unsigned char *) realloc(message, ++msgSize);
-            message[msgSize] = 0x7D;
-            msgSize++;
-            message[msgSize] = bcc2 ^ 0x20;
-            msgSize++;
-            
-        }else{
-            printf("IM HERE 2");
-            message[msgSize] = bcc2;
-            msgSize++;
-            
-        }
-        message[msgSize] = 0x7E;
-        msgSize++;
-        
-    //print message
-    for(int i = 0; i < msgSize; i++){
-        printf("%x ", message[i]);
+        frame = (unsigned char *) realloc(frame, ++frameSize);
+        frame[i++] = 0x7D;
+        frame[i++] = bcc2 ^ 0x20;
+    }else{
+        frame[i++] = bcc2;
     }
+    frame[i++] = 0x7E;
 
-    return msgSize;
+    printf("frameSize: %d\n", frameSize);
+    printf("i: %d\n", frameSize);
+    return frameSize;
 }
 
 /*int destuffing(unsigned char* buf, int start, int length, unsigned char* message) {
@@ -557,7 +551,7 @@ int stuffing(unsigned char* buf, int start, int length, unsigned char* message, 
 
 unsigned char readResponse(int fd){
     
-    unsigned char byte, controlByte = 0;
+    unsigned char byte, controlByte;
     LinkLayerState state = START;
     
     while (state != STOP && alarmActivated == FALSE) {  
@@ -568,17 +562,21 @@ unsigned char readResponse(int fd){
             switch (state) {
 
                 case START:
+                    
                     if (byte == 0x7E){
                         state = FLAG_RCV;
                     }
                     break;
                 case FLAG_RCV:
+                    
                     if (byte == 0x03){
+
                         state = A_RCV;
                     } 
                     else if (byte != 0x7E) state = START;
                     break;
                 case A_RCV:
+                    //print byte content
                     if (byte == 0x05 || byte == 0x85 || byte == 0x01 || byte == 0x81){
                         state = C_RCV;
                         controlByte = byte;   
@@ -587,12 +585,16 @@ unsigned char readResponse(int fd){
                     else state = START;
                     break;
                 case C_RCV:
-                    if (byte == (0x03 ^ controlByte)) state = BCC1_OK;
+                    if (byte == (0x03 ^ controlByte)){
+                        
+                        state = BCC1_OK;
+                    }
                     else if (byte == 0x7E) state = FLAG_RCV;
                     else state = START;
                     break;
                 case BCC1_OK:
                     if (byte == 0x7E){
+                        
                         state = STOP;
                     }
                     else state = START;
@@ -600,7 +602,9 @@ unsigned char readResponse(int fd){
                 default: 
                     break;
         }
+        
     } 
+    printf("CONTROl byte: %x\n", controlByte);
     return controlByte;
 } 
     
