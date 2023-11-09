@@ -56,16 +56,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             char *buffer = (char *)malloc(filesize);
             fread(buffer, filesize, 1, file);
             fclose(file);
-            //print control packet size
-            printf("File size in bytes: %d\n", filesize);
-            printf("Control packet size: %d\n", packetSize);
-
-            //print control packet content
-            printf("Control packet content: ");
-            for(int i = 0; i < packetSize; i++){
-                printf("%x ", controlPacket[i]);
-            }
-
             
             //write packet
             if(llwrite(fd, controlPacket, packetSize) < 0){ //o write do dobby tem mais um parametro (?)
@@ -111,7 +101,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             free(controlPacket);
             free(controlPacketFinal);
 
-            llclose(fd, linkLayer);
+            int res = llclose(fd, linkLayer);
+            printf("llclose transmitter returned %d\n", res);
 
             break;
         
@@ -130,9 +121,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 printf("Invalid start control packet\n");
                 exit(-1);
             }
-            //print packet size2
-            printf("Packet size: %d\n", packetSize2);
-            printf("Received start packet\n");
+         
 
             unsigned long fileSizeRx;
             
@@ -161,12 +150,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                     unsigned char L2 = dataPacket[1];
                     unsigned char L1 = dataPacket[2];
                     int k = 256 * L2 +L1;
-
-                    printf("k: %d\n", k);
-                    fwrite(dataPacket +3,k,1,newFile);
-
-                    printf("GAY\n");
-                    
+                    fwrite(dataPacket +3,k,1,newFile);                    
                 }
 
                 else{
@@ -179,7 +163,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             free(fileName);
             fclose(newFile);
 
-            llclose(fd, linkLayer);
+            int res2 = llclose(fd, linkLayer);
+            printf("llclose receiver returned %d\n", res2);
 
             break;
 
@@ -209,7 +194,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     memcpy(sizeAux, packet + 3, fileSizeBytes);
     
     for (unsigned int i = 0; i < fileSizeBytes; i++){
-        printf("fileSizeBytes: %d\n", 3 + i);
         *fileSize |= (sizeAux[fileSizeBytes - i - 1] << (8 * i));
     } 
 

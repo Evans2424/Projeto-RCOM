@@ -45,7 +45,8 @@ int connect(const char* serialPort){
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
     newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
-    
+        int fd = open(serialPort, O_RDWR | O_NOCTTY);
+
     tcflush(fd, TCIOFLUSH);
 
     // Set new port settings
@@ -94,7 +95,6 @@ int llopen(LinkLayer connectionParameters) {
     switch (connectionParameters.role) {
         case LlTx: {  
             int tries = 0;
-            printf("nRetransmissions: %d\n", connectionParameters.nRetransmissions);
             while (tries < connectionParameters.nRetransmissions && state != STOP) { // This loop is going to try to send the SET command, and wait for the UA response from the receiver
                 printf("Trial number: %d\n", tries);
                 if (supervisionWriter(fd, 0x7E, 0x03, 0x03) < 0){// Construction of SET Supervision command. 
@@ -225,14 +225,7 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
         bcc2 ^= buf[i];
     }
     frameSize = stuffing(buf, bufSize, frame, frameSize, bcc2);
-    
-
-     //print message
-    for(int i = 0; i < frameSize; i++){
-        printf("%x ", frame[i]);
-    }
-    
-    
+        
     int nTransmission = 0;
     int rejected, accepted;
 
@@ -248,19 +241,17 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
                 printf("Error reading response\n");
                 continue;
             }
-            //Print res
-            printf("res: %x\n", res);
             
             switch(res){
                 case 0x05:
                 case 0x85:
-                    printf("Frame accepted\n");
+                    
                     accepted = TRUE;
                     NTx = (NTx + 1) % 2;
                     break;
                 case 0x01:
                 case 0x81:
-                    printf("Frame rejected\n");
+                    
                     rejected = TRUE;
                     break;
                 default:
@@ -283,7 +274,6 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(int fd, unsigned char *packet)
 {
-    printf("this is llread");
     unsigned char sequenceNumber = 1;
     LinkLayerState state = START;
     unsigned char buffer, NSequence;
@@ -304,7 +294,6 @@ int llread(int fd, unsigned char *packet)
 
                 case FLAG_RCV:
                     if (buffer == 0x03 || buffer == 0x01) {
-                        printf("Flag RCV");
                         state = A_RCV;
                     }
                     else if (buffer == 0x7E) {
@@ -321,7 +310,6 @@ int llread(int fd, unsigned char *packet)
                         NSequence = 0;
                     }
                     else if (buffer == 0x40) {
-                        printf("É I1 \n"); //Se for I1
                         state = C_RCV;
                         NSequence = 1;
                     }
@@ -368,7 +356,6 @@ int llread(int fd, unsigned char *packet)
                             state = STOP;
                             // send RR
                             unsigned char C_RR = NSequence == 0 ? 0x85 : 0x05;
-                            printf("C_RR: %x\n", C_RR);
                             supervisionWriter(fd, 0x7E, 0x03,C_RR);
                             // check if it is not a repeated packet
                             if(NSequence == sequenceNumber){
@@ -412,6 +399,7 @@ int llread(int fd, unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose(int fd, LinkLayer connectionParameters)
 {
+    
     LinkLayerState state = START;
     (void) signal(SIGALRM, alarmHandler);
 
@@ -464,6 +452,7 @@ int llclose(int fd, LinkLayer connectionParameters)
             if (state != STOP) return -1; 
             printf("Writing supervision command UA to Rx\n");
             supervisionWriter(fd, 0x7E, 0x03, 0x07); // Construction of UA Supervision command.
+            return close(fd);
             break;
     }
 
@@ -490,9 +479,6 @@ int llclose(int fd, LinkLayer connectionParameters)
                             }
                             break;
                         case FLAG_RCV:                            
-                            //print byte
-                            printf("byte: %x\n", byte);
-
                             if(byte == 0x03){
                                 state = A_RCV;
                             }
@@ -607,8 +593,6 @@ int stuffing(unsigned char *buf, int bufSize, unsigned char *frame, int frameSiz
     }
     frame[i++] = 0x7E;
 
-    printf("frameSize: %d\n", frameSize);
-    printf("i: %d\n", frameSize);
     return frameSize;
 }
 
@@ -668,7 +652,6 @@ unsigned char readResponse(int fd){
         }
     }
         
-    printf("CONTROl byte: %x\n", controlByte);
     return controlByte;
 } 
     
