@@ -129,13 +129,11 @@ int llopen(LinkLayer connectionParameters) {
                                 else state = START;
                                 break;
                             case C_RCV:
-                                printf("control byte");
                                 if (byte == (0x01 ^ 0x07)) state = BCC1_OK;
                                 else if (byte == 0x7E) state = FLAG_RCV;
                                 else state = START;
                                 break;
                             case BCC1_OK:
-                                printf("connection ok\n");
                                 if (byte == 0x7E) state = STOP;
                                 else state = START;
                                 break;
@@ -286,7 +284,7 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
 int llread(int fd, unsigned char *packet)
 {
     printf("this is llread");
-    unsigned char sequenceNumber = 0;
+    unsigned char sequenceNumber = 1;
     LinkLayerState state = START;
     unsigned char buffer, NSequence;
     int packet_position = 0;
@@ -369,7 +367,7 @@ int llread(int fd, unsigned char *packet)
                             
                             state = STOP;
                             // send RR
-                            unsigned char C_RR = NSequence == 0 ? 0x05 : 0x85;
+                            unsigned char C_RR = NSequence == 0 ? 0x85 : 0x05;
                             printf("C_RR: %x\n", C_RR);
                             supervisionWriter(fd, 0x7E, 0x03,C_RR);
                             // check if it is not a repeated packet
@@ -488,7 +486,6 @@ int llclose(int fd, LinkLayer connectionParameters)
                         case START:
                             
                             if (byte == 0x7E){
-                             printf("Correct flag\n");
                              state = FLAG_RCV;
                             }
                             break;
@@ -497,7 +494,6 @@ int llclose(int fd, LinkLayer connectionParameters)
                             printf("byte: %x\n", byte);
 
                             if(byte == 0x03){
-                                printf("ARCVDISC\n");
                                 state = A_RCV;
                             }
                              
@@ -505,7 +501,6 @@ int llclose(int fd, LinkLayer connectionParameters)
                             break;
                         case A_RCV:
                             if(byte == 0x0B){
-                                printf("ARCVDISC\n");
                                 state = C_RCV;
                             }
                              
@@ -545,7 +540,6 @@ int llclose(int fd, LinkLayer connectionParameters)
                     switch (state) {
                         case START:
                             if (byte == 0x7E){
-                                printf("ACCEPTED flag\n");
                                 state = FLAG_RCV;
                             }
                              
@@ -553,14 +547,12 @@ int llclose(int fd, LinkLayer connectionParameters)
 
                         case FLAG_RCV:
                             if(byte == 0x03){
-                                printf("ARCVDISC\n");
                                 state = A_RCV;
                             } 
                             else if (byte != 0x7E) state = START;
                             break;
                         case A_RCV:
                             if(byte == 0x07){
-                             printf("Accepted UA flag\n");
                              state = C_RCV;
                             }
                             else if (byte == 0x7E) state = FLAG_RCV;
@@ -581,7 +573,7 @@ int llclose(int fd, LinkLayer connectionParameters)
                 }
 
              if (state != STOP) return -1;
-             
+
                 printf("Connection closed\n");
                 return close(fd);
                 
@@ -619,28 +611,6 @@ int stuffing(unsigned char *buf, int bufSize, unsigned char *frame, int frameSiz
     printf("i: %d\n", frameSize);
     return frameSize;
 }
-
-/*int destuffing(unsigned char* buf, int start, int length, unsigned char* message) {
-    int msgSize = 0;
-
-    for (int i = 0; i < start; i++) {
-        message[msgSize] = buf[i];
-        msgSize++;
-    }
-
-    for (int i = start; i < length; i++) {
-        if(buf[i] == 0x7D) {
-            message[msgSize] = buf[i+1] ^ 0x20;
-            msgSize++;
-            i++;
-        }
-        else {
-            message[msgSize] = buf[i];
-            msgSize++;
-        }
-    }
-    return msgSize;
-}*/
 
 
 unsigned char readResponse(int fd){

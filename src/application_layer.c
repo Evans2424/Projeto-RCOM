@@ -116,11 +116,16 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             break;
         
         case LlRx:
-            int packetSize2 = -1;
+            
             unsigned char *startPacket =  (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
-            while ((packetSize2 < 0)){
+            int packetSize2 = llread(fd, startPacket);
+
+          
+
+            /*while ((packetSize2 < 0)){
                 packetSize2 = llread(fd, startPacket);
-            }
+            }*/
+
             if (startPacket[0] != 2) {
                 printf("Invalid start control packet\n");
                 exit(-1);
@@ -137,24 +142,31 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             //print file size
             printf("File size: %lu\n", fileSizeRx);
             //create filename as the strinf "received"
-            char *newFileName = malloc(strlen(fileName) + 9);
-            strcpy(newFileName, "received.gif");
+         
             
-            FILE* newFile = fopen((char *)newFileName, "wb+");
-            unsigned char *dataPacket =  (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+            FILE* newFile = fopen((char *)filename, "a");
+            unsigned char *dataPacket =  (unsigned char *)malloc(MAX_PAYLOAD_SIZE + 3);
+            int dataWritten = 0;
+            int i = 0;
             while(TRUE) {
                 packetSize2 = -1;
                 while (packetSize2 < 0) {
                     
                     packetSize2 = llread(fd, dataPacket);
                 }
-                
-                //if(packetSize2 == 0) break;
-                
-        
+             
+                        
 
-                if(dataPacket[0] != 3) {              
-                    printf("We need to write on the file");           
+                if(dataPacket[0] != 3) {        
+                    unsigned char L2 = dataPacket[1];
+                    unsigned char L1 = dataPacket[2];
+                    int k = 256 * L2 +L1;
+
+                    printf("k: %d\n", k);
+                    fwrite(dataPacket +3,k,1,newFile);
+
+                    printf("GAY\n");
+                    
                 }
 
                 else{
@@ -165,11 +177,14 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             free(dataPacket);
             free(startPacket);
             free(fileName);
-            free(newFileName);
             fclose(newFile);
 
             llclose(fd, linkLayer);
 
+            break;
+
+        default:
+            printf("Reached default case\n");
             break;
     }
  }
@@ -192,7 +207,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     unsigned char sizeAux[fileSizeBytes];
 
     memcpy(sizeAux, packet + 3, fileSizeBytes);
+    
     for (unsigned int i = 0; i < fileSizeBytes; i++){
+        printf("fileSizeBytes: %d\n", 3 + i);
         *fileSize |= (sizeAux[fileSizeBytes - i - 1] << (8 * i));
     } 
 
