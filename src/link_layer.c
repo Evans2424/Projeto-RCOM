@@ -414,8 +414,6 @@ int llwrite(int fd, unsigned char *buf, int bufSize)
 */
 
 int llread(int fd, unsigned char *packet){
-    // RECEIVE PACKET I: 
-    // [F | A | C | BCC1(A xor C) | DATA1 | ... | DATAk | BCC2(DATA0 xor DATA1 xor...) | F]
 
     static char sequenceNumber = 0;
 
@@ -474,17 +472,13 @@ int llread(int fd, unsigned char *packet){
                             xor ^= packet[j];
                         }
 
-                        unsigned char supervision_packet[5] = {0};
-                        supervision_packet[0] = 0x7E;
-                        supervision_packet[1] = 0x03;
-                        supervision_packet[4] = 0x7E;
 
                         if(xor == bcc2){
                             state = STOP;
                             // send RR
-                            supervision_packet[2] = sequenceNumberReceived == 0 ? 0x85 : 0x05;
-                            supervision_packet[3] = 0x03 ^ supervision_packet[2];
-                            write(fd, supervision_packet, 5);
+                            unsigned char C_RR = sequenceNumberReceived == 0 ? 0x85 : 0x05;
+                            supervisionWriter(fd, 0x7E, 0x03,C_RR);
+
 
                             // check if it is not a repeated packet
                             if(sequenceNumberReceived == sequenceNumber){
@@ -494,9 +488,8 @@ int llread(int fd, unsigned char *packet){
                             return 0;
                         }else{
                             // send REJ (i_n)
-                            supervision_packet[2] = sequenceNumberReceived == 0 ? 0x01 : 0x81;
-                            supervision_packet[3] = 0x03 ^ supervision_packet[2];
-                            write(fd, supervision_packet, 5);
+                            unsigned char C_RR =  sequenceNumberReceived == 0 ? 0x01 : 0x81;
+                            supervisionWriter(fd, 0x7E, 0x03,C_RR);
                             state = START;
                         }
                     }else{
