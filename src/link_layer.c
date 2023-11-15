@@ -45,8 +45,6 @@ int connect(const char* serialPort){
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
     newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
-        int fd = open(serialPort, O_RDWR | O_NOCTTY);
-
     tcflush(fd, TCIOFLUSH);
 
     // Set new port settings
@@ -93,7 +91,7 @@ int llopen(LinkLayer connectionParameters) {
      // Variable to store each byte of the received command. 
 
     switch (connectionParameters.role) {
-        case LlTx: {  
+        case LlTx: {;  
             int tries = 0;
             while (tries < connectionParameters.nRetransmissions && state != STOP) { // This loop is going to try to send the SET command, and wait for the UA response from the receiver
                 printf("Trial number: %d\n", tries);
@@ -210,7 +208,7 @@ return fd;
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-int llwrite(int fd, const unsigned char *buf, int bufSize)
+int llwrite(int fd, unsigned char *buf, int bufSize)
 {
     int frameSize = bufSize + 6;
     unsigned char *frame = (unsigned char *)malloc(frameSize);
@@ -272,19 +270,26 @@ int llwrite(int fd, const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(int fd, unsigned char *packet)
+/*int llread(int fd, unsigned char *packet)
 {
-    unsigned char sequenceNumber = 1;
+    printf("control packet: %x\n", packet);
+    unsigned char sequenceNumber = 0;
     LinkLayerState state = START;
     unsigned char buffer, NSequence;
     int packet_position = 0;
+    int coco = 0;
+    
+    int alarmTriggered = FALSE;
+    alarm(timeout);
 
     while(state != STOP) {
-
+        
         if(read(fd, &buffer, 1) < 0) { //Leitura do byte
             printf("Error reading from serial port\n");
             return -1;
-        }
+        }   
+
+     
             switch (state){
                 case START:
                     if(buffer == 0x7E) {
@@ -293,18 +298,17 @@ int llread(int fd, unsigned char *packet)
                     break;	
 
                 case FLAG_RCV:
-                    if (buffer == 0x03 || buffer == 0x01) {
+                    printf("Byte read flag: %x\n", buffer);
+                    if (buffer == 0x03) {
                         state = A_RCV;
                     }
-                    else if (buffer == 0x7E) {
-                        state = FLAG_RCV;
-                    }
-                    else {
+                    else if (buffer != 0x7E) {
                         state = START;
                     }
                     break;
 
                 case A_RCV:
+                    printf("Byte read arcv: %x\n", buffer);
                     if (buffer == 0x00 ){ //Se for I0
                         state = C_RCV;
                         NSequence = 0;
@@ -322,6 +326,7 @@ int llread(int fd, unsigned char *packet)
                     break;
 
                 case C_RCV:
+                    printf("Byte read crcv: %x\n", buffer);
                     if (NSequence == 0 && buffer == (0x03 ^ 0x00)){
                          //Se for I0
                         state = DATA_FOUND;
@@ -339,24 +344,35 @@ int llread(int fd, unsigned char *packet)
                     break;
 
                 case DATA_FOUND:
+                    
                     if (buffer == 0x7D) {
                         state = DESTUFFING;
                     }
                     else if(buffer == 0x7E){
-                        unsigned char bcc2 = packet[--packet_position];
+                        unsigned char bcc2 = packet[packet_position-1];
+                        packet_position--;
                         packet[packet_position] = '\0';
+                        if (!coco) printf("bcc2: %x Packet position: %d\n", bcc2, packet_position);
                         
-                        unsigned char xor = 0x00;
-                        for(int j = 0; j < packet_position; j++){
+                        
+                        unsigned char xor = packet[0];
+                        for(int j = 1; j < packet_position; j++){
+                            //printf("packet: %x, %d\n", packet[j], j);
                             xor ^= packet[j];
                         }
+                        if (!coco) printf("xor: %x\n", xor);
+                        coco = 1;
 
-                        if(xor == bcc2){
+                        //printf("bcc2: %x\n", bcc2);
+                        //printf("xor: %x\n", xor);                     
+                        if(xor == bcc2){                       
                             
                             state = STOP;
                             // send RR
                             unsigned char C_RR = NSequence == 0 ? 0x85 : 0x05;
                             supervisionWriter(fd, 0x7E, 0x03,C_RR);
+                            printf("igual\n");
+     
                             // check if it is not a repeated packet
                             if(NSequence == sequenceNumber){
                                 sequenceNumber = (sequenceNumber + 1) % 2;
@@ -367,6 +383,7 @@ int llread(int fd, unsigned char *packet)
                             // send REJ (i_n)
                             unsigned char C_RJ = NSequence == 0 ? 0x01 : 0x81;
                             supervisionWriter(fd, 0x7E, 0x03,C_RJ);
+
                         }
                     }else{
                         packet[packet_position++] = buffer;
@@ -374,6 +391,7 @@ int llread(int fd, unsigned char *packet)
                     break;
                 
                 case DESTUFFING:
+                    printf("destuffing\n");
                     if(buffer == 0x5E){
                         packet[packet_position++] = 0x7E;
                     }else if(buffer == 0x5D){
@@ -393,6 +411,116 @@ int llread(int fd, unsigned char *packet)
     
     
 
+*/
+
+int llread(int fd, unsigned char *packet){
+    // RECEIVE PACKET I: 
+    // [F | A | C | BCC1(A xor C) | DATA1 | ... | DATAk | BCC2(DATA0 xor DATA1 xor...) | F]
+
+    static char sequenceNumber = 0;
+
+    unsigned char byte, sequenceNumberReceived;
+    int packet_position = 0;
+    LinkLayerState state = START;
+
+    while (state != STOP){
+        if(read(fd, &byte, 1) > 0){
+            switch(state){
+                case START:
+                    if(byte == 0x7E){
+                        state = FLAG_RCV;
+                    }
+                    break;
+                case FLAG_RCV:
+                    if(byte == 0x03){
+                        state = A_RCV;
+                    }else if(byte != 0x7E){
+                        state = START;
+                    }
+                    break;
+                case A_RCV:
+                    if(byte == 0x00){
+                        state = C_RCV;
+                        sequenceNumberReceived = 0;
+                    }else if(byte == 0x40){
+                        state = C_RCV;
+                        sequenceNumberReceived = 1;
+                    }else if(byte == 0x7E){
+                        state = FLAG_RCV;
+                    }else{
+                        state = START;
+                    }
+                    break;
+                case C_RCV:
+                    if(sequenceNumberReceived == 0 && byte == (0x03 ^ 0x00)){
+                        state = DATA_FOUND;
+                    }else if(sequenceNumberReceived == 1 && byte == (0x03 ^ 0x40)){
+                        state = DATA_FOUND;
+                    }else if(byte == 0x7E){
+                        state = FLAG_RCV;
+                    }else{
+                        state = START;
+                    }
+                    break;
+                case DATA_FOUND:
+                    if(byte == 0x7D){
+                        state = DESTUFFING;
+                    }else if(byte == 0x7E){
+                        unsigned char bcc2 = packet[--packet_position];
+                        packet[packet_position] = '\0';
+                        
+                        unsigned char xor = 0x00;
+                        for(int j = 0; j < packet_position; j++){
+                            xor ^= packet[j];
+                        }
+
+                        unsigned char supervision_packet[5] = {0};
+                        supervision_packet[0] = 0x7E;
+                        supervision_packet[1] = 0x03;
+                        supervision_packet[4] = 0x7E;
+
+                        if(xor == bcc2){
+                            state = STOP;
+                            // send RR
+                            supervision_packet[2] = sequenceNumberReceived == 0 ? 0x85 : 0x05;
+                            supervision_packet[3] = 0x03 ^ supervision_packet[2];
+                            write(fd, supervision_packet, 5);
+
+                            // check if it is not a repeated packet
+                            if(sequenceNumberReceived == sequenceNumber){
+                                sequenceNumber = (sequenceNumber + 1) % 2;
+                                return packet_position;
+                            }
+                            return 0;
+                        }else{
+                            // send REJ (i_n)
+                            supervision_packet[2] = sequenceNumberReceived == 0 ? 0x01 : 0x81;
+                            supervision_packet[3] = 0x03 ^ supervision_packet[2];
+                            write(fd, supervision_packet, 5);
+                            state = START;
+                        }
+                    }else{
+                        packet[packet_position++] = byte;
+                    }
+                    break;
+                case DESTUFFING:
+                    if(byte == 0x5E){
+                        packet[packet_position++] = 0x7E;
+                    }else if(byte == 0x5D){
+                        packet[packet_position++] = 0x7D;
+                    }else{
+                        packet[packet_position++] = byte;
+                    }
+                    state = DATA_FOUND;
+                    break;
+                default:
+                    state = START;
+                    break;
+            }
+        }
+    }
+    return -1;
+}
 
 ////////////////////////////////////////////////
 // LLCLOSE
@@ -411,7 +539,7 @@ int llclose(int fd, LinkLayer connectionParameters)
             printf("Closing as transmitter\n");
             (void) signal(SIGALRM, alarmHandler); // Subscribe the alarm interruptions. When it receives an interruption the alarmHandler is called, and alarmActivated is set to TRUE.
             int tries = 0;
-            while (tries < connectionParameters.nRetransmissions != 0 && state != STOP) { // This loop is going to try to send the DISC command, and wait for the DISC response from the receiver
+            while ((tries < connectionParameters.nRetransmissions) && (state != STOP)) { // This loop is going to try to send the DISC command, and wait for the DISC response from the receiver
                 supervisionWriter(fd, 0x7E, 0x03, 0x0B); // Construction of DISC Supervision command. 
                 alarm(connectionParameters.timeout); // Sets the alarm to the timeout value, so that it waits n seconds to try to retrieve the DISC command
                 alarmActivated = FALSE; // Sets the alarmActivated to FALSE so that it enters the while loop below.
@@ -565,6 +693,7 @@ int llclose(int fd, LinkLayer connectionParameters)
                 
         }
     }
+    return 1;
 }
 
 
@@ -598,6 +727,7 @@ int stuffing(unsigned char *buf, int bufSize, unsigned char *frame, int frameSiz
 
 
 unsigned char readResponse(int fd){
+    printf("entered\n");
     
     unsigned char byte, controlByte;
     LinkLayerState state = START;
@@ -614,14 +744,16 @@ unsigned char readResponse(int fd){
                     if (byte == 0x7E){
                         state = FLAG_RCV;
                     }
+                    printf("start\n");
                     break;
                 case FLAG_RCV:
                     
                     if (byte == 0x03){
 
                         state = A_RCV;
-                    } 
+                    }                                         
                     else if (byte != 0x7E) state = START;
+                    printf("flag\n");
                     break;
                 case A_RCV:
                     //print byte content
@@ -631,6 +763,7 @@ unsigned char readResponse(int fd){
                     }
                     else if (byte == 0x7E) state = FLAG_RCV;
                     else state = START;
+                    printf("A\n");
                     break;
                 case C_RCV:
                     if (byte == (0x03 ^ controlByte)){
@@ -639,6 +772,7 @@ unsigned char readResponse(int fd){
                     }
                     else if (byte == 0x7E) state = FLAG_RCV;
                     else state = START;
+                    printf("C\n");
                     break;
                 case BCC1_OK:
                     if (byte == 0x7E){
@@ -646,6 +780,7 @@ unsigned char readResponse(int fd){
                         state = STOP;
                     }
                     else state = START;
+                    printf("bcc1\n");
                     break;
                 default: 
                     break;
