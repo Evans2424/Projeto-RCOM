@@ -90,7 +90,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             memcpy(controlPacketFinal, controlPacket, packetSize);
             controlPacketFinal[0] = 0x03; // control field end
             //print control packet size
-            printf("Control packet size: %ld\n", filesize);
             
             //write control packet
             if(llwrite(fd, controlPacketFinal, packetSize) == -1) { 
@@ -109,9 +108,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         case LlRx:;
             
             unsigned char *startPacket =  (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
-            printf("malloc\n");
             int packetSize2 = llread(fd, startPacket);
-            printf("read\n");
 
           
 
@@ -130,9 +127,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             unsigned char *fileName = parseCtrlPacket(startPacket, packetSize2, &fileSizeRx);
             //print file name
             printf("File name: %s\n", fileName);
-            //print file size
-            printf("File size: %lu\n", fileSizeRx);
-            //create filename as the strinf "received"
          
             
             FILE* newFile = fopen((char *)filename, "a");

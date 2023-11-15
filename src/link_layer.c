@@ -571,7 +571,6 @@ int llclose(int fd, LinkLayer connectionParameters)
                  tries++; // increment number of tries
             }
             if (state != STOP) return -1; 
-            printf("Writing supervision command UA to Rx\n");
             supervisionWriter(fd, 0x7E, 0x03, 0x07); // Construction of UA Supervision command.
             return close(fd);
             break;
@@ -632,7 +631,6 @@ int llclose(int fd, LinkLayer connectionParameters)
             }
                 
             if (state != STOP) return -1;
-            printf("Writing supervision command DISC to Tx\n");
             supervisionWriter(fd, 0x7E, 0x01, 0x0B); // Construction of DISC Supervision command.
                 
             state = START;
@@ -720,7 +718,6 @@ int stuffing(unsigned char *buf, int bufSize, unsigned char *frame, int frameSiz
 
 
 unsigned char readResponse(int fd){
-    printf("entered\n");
     
     unsigned char byte, controlByte;
     LinkLayerState state = START;
@@ -737,7 +734,6 @@ unsigned char readResponse(int fd){
                     if (byte == 0x7E){
                         state = FLAG_RCV;
                     }
-                    printf("start\n");
                     break;
                 case FLAG_RCV:
                     
@@ -746,7 +742,6 @@ unsigned char readResponse(int fd){
                         state = A_RCV;
                     }                                         
                     else if (byte != 0x7E) state = START;
-                    printf("flag\n");
                     break;
                 case A_RCV:
                     //print byte content
@@ -756,7 +751,6 @@ unsigned char readResponse(int fd){
                     }
                     else if (byte == 0x7E) state = FLAG_RCV;
                     else state = START;
-                    printf("A\n");
                     break;
                 case C_RCV:
                     if (byte == (0x03 ^ controlByte)){
@@ -765,7 +759,6 @@ unsigned char readResponse(int fd){
                     }
                     else if (byte == 0x7E) state = FLAG_RCV;
                     else state = START;
-                    printf("C\n");
                     break;
                 case BCC1_OK:
                     if (byte == 0x7E){
@@ -773,7 +766,6 @@ unsigned char readResponse(int fd){
                         state = STOP;
                     }
                     else state = START;
-                    printf("bcc1\n");
                     break;
                 default: 
                     break;
