@@ -36,7 +36,7 @@ int connect(const char* serialPort){
     // Clear struct for new port settings
     memset(&newtio, 0, sizeof(newtio));
 
-    newtio.c_cflag = 9600 | CS8 | CLOCAL | CREAD;
+    newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
 
@@ -210,6 +210,7 @@ return fd;
 ////////////////////////////////////////////////
 int llwrite(int fd, unsigned char *buf, int bufSize)
 {
+	
     int frameSize = bufSize + 6;
     unsigned char *frame = (unsigned char *)malloc(frameSize);
 
@@ -225,36 +226,35 @@ int llwrite(int fd, unsigned char *buf, int bufSize)
     frameSize = stuffing(buf, bufSize, frame, frameSize, bcc2);
         
     int nTransmission = 0;
-    int rejected, accepted;
+    int accepted = FALSE;
 
+    
     while(nTransmission < retransmitions){
         alarmActivated = FALSE;
         alarm(timeout);
-        rejected = FALSE;
-        accepted = FALSE;
-        while (!(alarmActivated == TRUE || rejected || accepted)){
+        
+		accepted = FALSE;
+        
+        while (alarmActivated == FALSE && !accepted){
             write(fd, frame, frameSize); //Write I(0) frame to serial port
+            
             unsigned char res = readResponse(fd);
+            printf("res: %x\n", res);
             if(!res){
                 printf("Error reading response\n");
                 continue;
             }
             
-            switch(res){
-                case 0x05:
-                case 0x85:
-                    
-                    accepted = TRUE;
+            else if (res == 0x05 || res == 0x85){
+               
+					accepted = TRUE;
                     NTx = (NTx + 1) % 2;
-                    break;
-                case 0x01:
-                case 0x81:
                     
-                    rejected = TRUE;
-                    break;
-                default:
-                    break;
-            }
+				}
+            else if (res == 0x01 || res == 0x81){  
+					accepted = FALSE;
+				}
+			else continue;                                                
         }
         if(accepted) return frameSize;
     nTransmission++;
@@ -263,155 +263,14 @@ int llwrite(int fd, unsigned char *buf, int bufSize)
     if(accepted) return frameSize;
     else{
         printf("Error sending frame\n");
-        return -1;
+        exit(-1);
     } 
 }
 
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-/*int llread(int fd, unsigned char *packet)
-{
-    printf("control packet: %x\n", packet);
-    unsigned char sequenceNumber = 0;
-    LinkLayerState state = START;
-    unsigned char buffer, NSequence;
-    int packet_position = 0;
-    int coco = 0;
-    
-    int alarmTriggered = FALSE;
-    alarm(timeout);
 
-    while(state != STOP) {
-        
-        if(read(fd, &buffer, 1) < 0) { //Leitura do byte
-            printf("Error reading from serial port\n");
-            return -1;
-        }   
-
-     
-            switch (state){
-                case START:
-                    if(buffer == 0x7E) {
-                        state = FLAG_RCV;
-                    }
-                    break;	
-
-                case FLAG_RCV:
-                    printf("Byte read flag: %x\n", buffer);
-                    if (buffer == 0x03) {
-                        state = A_RCV;
-                    }
-                    else if (buffer != 0x7E) {
-                        state = START;
-                    }
-                    break;
-
-                case A_RCV:
-                    printf("Byte read arcv: %x\n", buffer);
-                    if (buffer == 0x00 ){ //Se for I0
-                        state = C_RCV;
-                        NSequence = 0;
-                    }
-                    else if (buffer == 0x40) {
-                        state = C_RCV;
-                        NSequence = 1;
-                    }
-                    else if(buffer == 0x7E){
-                        state = FLAG_RCV;
-                    }
-                    else {
-                        state = START;
-                    }
-                    break;
-
-                case C_RCV:
-                    printf("Byte read crcv: %x\n", buffer);
-                    if (NSequence == 0 && buffer == (0x03 ^ 0x00)){
-                         //Se for I0
-                        state = DATA_FOUND;
-                    }
-                    else if (NSequence == 1 && buffer == (0x03 ^ 0x40)){
-                         //Se for I1) {
-                        state = DATA_FOUND;
-                    }
-                    else if(buffer == 0x7E){
-                        state = FLAG_RCV;
-                    }
-                    else {
-                        state = START;
-                    }
-                    break;
-
-                case DATA_FOUND:
-                    
-                    if (buffer == 0x7D) {
-                        state = DESTUFFING;
-                    }
-                    else if(buffer == 0x7E){
-                        unsigned char bcc2 = packet[packet_position-1];
-                        packet_position--;
-                        packet[packet_position] = '\0';
-                        if (!coco) printf("bcc2: %x Packet position: %d\n", bcc2, packet_position);
-                        
-                        
-                        unsigned char xor = packet[0];
-                        for(int j = 1; j < packet_position; j++){
-                            //printf("packet: %x, %d\n", packet[j], j);
-                            xor ^= packet[j];
-                        }
-                        if (!coco) printf("xor: %x\n", xor);
-                        coco = 1;
-
-                        //printf("bcc2: %x\n", bcc2);
-                        //printf("xor: %x\n", xor);                     
-                        if(xor == bcc2){                       
-                            
-                            state = STOP;
-                            // send RR
-                            unsigned char C_RR = NSequence == 0 ? 0x85 : 0x05;
-                            supervisionWriter(fd, 0x7E, 0x03,C_RR);
-                            printf("igual\n");
-     
-                            // check if it is not a repeated packet
-                            if(NSequence == sequenceNumber){
-                                sequenceNumber = (sequenceNumber + 1) % 2;
-                                return packet_position;
-                            }
-                            return 0;
-                        }else{
-                            // send REJ (i_n)
-                            unsigned char C_RJ = NSequence == 0 ? 0x01 : 0x81;
-                            supervisionWriter(fd, 0x7E, 0x03,C_RJ);
-
-                        }
-                    }else{
-                        packet[packet_position++] = buffer;
-                    }
-                    break;
-                
-                case DESTUFFING:
-                    printf("destuffing\n");
-                    if(buffer == 0x5E){
-                        packet[packet_position++] = 0x7E;
-                    }else if(buffer == 0x5D){
-                        packet[packet_position++] = 0x7D;
-                    }else{
-                        packet[packet_position++] = buffer;
-                    }
-                    state = DATA_FOUND;
-                    break;
-    
-                default:
-                    break;
-            }  
-        }
-        return -1;
-    }
-    
-    
-
-*/
 
 int llread(int fd, unsigned char *packet){
 
@@ -491,6 +350,7 @@ int llread(int fd, unsigned char *packet){
                             unsigned char C_RR =  sequenceNumberReceived == 0 ? 0x01 : 0x81;
                             supervisionWriter(fd, 0x7E, 0x03,C_RR);
                             state = START;
+                            return -1;
                         }
                     }else{
                         packet[packet_position++] = byte;

@@ -15,6 +15,8 @@
 #include <signal.h>
 #include <time.h>
 
+#define BAUDRATE 9600
+
 
 typedef enum
 {
